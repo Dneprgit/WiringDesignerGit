@@ -13,6 +13,8 @@ class Project(Base):
     floor_plan_image = Column(Text, nullable=True)  # Base64 или путь к изображению
     floor_plan_svg = Column(Text, nullable=True)  # SVG данные плана квартиры
     floor_plan_locked = Column(Integer, default=0)  # Флаг блокировки слоя плана (0 - разблокирован, 1 - заблокирован)
+    elements_locked = Column(Integer, default=0)  # Флаг блокировки слоя электроэлементов (0 - разблокирован, 1 - заблокирован)
+    active_layer = Column(String, default='elements')  # Активный слой: 'plan' или 'elements'
     
     elements = relationship("Element", back_populates="project", cascade="all, delete-orphan")
     connections = relationship("Connection", back_populates="project", cascade="all, delete-orphan")

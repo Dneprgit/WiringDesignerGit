@@ -6,6 +6,8 @@ export interface Project {
   floor_plan_image?: string;
   floor_plan_svg?: string;
   floor_plan_locked?: boolean;
+  elements_locked?: boolean;
+  active_layer?: 'plan' | 'elements';
 }
 
 export interface Element {

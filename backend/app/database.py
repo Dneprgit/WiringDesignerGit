@@ -45,6 +45,22 @@ def migrate_db():
                     print("Added floor_plan_locked column to projects table")
                 except Exception as e:
                     print(f"Error adding floor_plan_locked column: {e}")
+            
+            # Добавляем elements_locked, если его нет
+            if 'elements_locked' not in columns:
+                try:
+                    conn.execute(text('ALTER TABLE projects ADD COLUMN elements_locked INTEGER DEFAULT 0'))
+                    print("Added elements_locked column to projects table")
+                except Exception as e:
+                    print(f"Error adding elements_locked column: {e}")
+            
+            # Добавляем active_layer, если его нет
+            if 'active_layer' not in columns:
+                try:
+                    conn.execute(text("ALTER TABLE projects ADD COLUMN active_layer TEXT DEFAULT 'elements'"))
+                    print("Added active_layer column to projects table")
+                except Exception as e:
+                    print(f"Error adding active_layer column: {e}")
 
 def init_db():
     Base.metadata.create_all(bind=engine)

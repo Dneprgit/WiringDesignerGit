@@ -16,6 +16,8 @@ class ProjectUpdate(BaseModel):
     floor_plan_image: Optional[str] = None
     floor_plan_svg: Optional[str] = None
     floor_plan_locked: Optional[bool] = None
+    elements_locked: Optional[bool] = None
+    active_layer: Optional[str] = None
 
 class Project(ProjectBase):
     id: int
@@ -23,6 +25,8 @@ class Project(ProjectBase):
     floor_plan_image: Optional[str] = None
     floor_plan_svg: Optional[str] = None
     floor_plan_locked: bool = False
+    elements_locked: bool = False
+    active_layer: str = 'elements'
     
     class Config:
         from_attributes = True

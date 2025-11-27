@@ -35,6 +35,7 @@ import { getElements, createElement, updateElement, deleteElement, getConnection
 import type { Project, Element, Connection as ConnectionType, ElementType } from '../../types/models';
 import ElementNode from './ElementNode';
 import FloorPlanLayer from './FloorPlanLayer';
+import FloorPlanToolPalette, { FloorPlanToolType } from './FloorPlanToolPalette';
 
 const nodeTypes: NodeTypes = {
   element: ElementNode,
@@ -54,16 +55,22 @@ const FloorPlanEditor: React.FC<FloorPlanEditorProps> = ({ project }) => {
   const [elementName, setElementName] = useState('');
   const [editingConnection, setEditingConnection] = useState<ConnectionType | null>(null);
   const [connectionDialogOpen, setConnectionDialogOpen] = useState(false);
-  const [isDrawingMode, setIsDrawingMode] = useState(false);
+  const [activeLayer, setActiveLayer] = useState<'plan' | 'elements'>(project.active_layer || 'elements');
   const [isPlanLocked, setIsPlanLocked] = useState(project.floor_plan_locked || false);
+  const [isElementsLocked, setIsElementsLocked] = useState(project.elements_locked || false);
   const [floorPlanSvg, setFloorPlanSvg] = useState(project.floor_plan_svg || '');
+  const [selectedTool, setSelectedTool] = useState<FloorPlanToolType>(null);
+
+  const isDrawingMode = activeLayer === 'plan';
 
   useEffect(() => {
     loadElements();
     loadConnections();
     setFloorPlanSvg(project.floor_plan_svg || '');
     setIsPlanLocked(project.floor_plan_locked || false);
-  }, [project.id, project.floor_plan_svg, project.floor_plan_locked]);
+    setIsElementsLocked(project.elements_locked || false);
+    setActiveLayer(project.active_layer || 'elements');
+  }, [project.id, project.floor_plan_svg, project.floor_plan_locked, project.elements_locked, project.active_layer]);
 
   const loadElements = async () => {
     try {
@@ -109,6 +116,8 @@ const FloorPlanEditor: React.FC<FloorPlanEditorProps> = ({ project }) => {
 
   const onConnect = useCallback(
     async (params: Connection) => {
+      // Не позволяем создавать связи, если активен слой плана или слой элементов заблокирован
+      if (activeLayer !== 'elements' || isElementsLocked) return;
       if (!params.source || !params.target) return;
       
       try {
@@ -128,10 +137,13 @@ const FloorPlanEditor: React.FC<FloorPlanEditorProps> = ({ project }) => {
         console.error('Error creating connection:', error);
       }
     },
-    [project.id]
+    [project.id, activeLayer, isElementsLocked]
   );
 
   const onEdgeDoubleClick = useCallback((event: React.MouseEvent, edge: Edge) => {
+    // Не позволяем редактировать связи, если активен слой плана или слой элементов заблокирован
+    if (activeLayer !== 'elements' || isElementsLocked) return;
+    
     const connectionId = parseInt(edge.id);
     // Находим связь по ID
     getConnections(project.id).then((response) => {
@@ -141,7 +153,7 @@ const FloorPlanEditor: React.FC<FloorPlanEditorProps> = ({ project }) => {
         setConnectionDialogOpen(true);
       }
     });
-  }, [project.id]);
+  }, [project.id, activeLayer, isElementsLocked]);
 
   const handleConnectionSave = async (connectionData: Partial<ConnectionType>) => {
     if (!editingConnection) return;
@@ -156,8 +168,8 @@ const FloorPlanEditor: React.FC<FloorPlanEditorProps> = ({ project }) => {
 
   const handlePaneClick = useCallback(
     async (event: React.MouseEvent) => {
-      // Не обрабатываем клики, если режим рисования активен или слой заблокирован
-      if (isDrawingMode || isPlanLocked) return;
+      // Не обрабатываем клики, если активен слой плана или слой элементов заблокирован
+      if (activeLayer !== 'elements' || isElementsLocked) return;
       if (!selectedElementType) return;
       
       const reactFlowBounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
@@ -175,7 +187,7 @@ const FloorPlanEditor: React.FC<FloorPlanEditorProps> = ({ project }) => {
       (window as any).pendingElementPosition = position;
       (window as any).pendingElementType = selectedElementType;
     },
-    [selectedElementType, isDrawingMode, isPlanLocked]
+    [selectedElementType, activeLayer, isElementsLocked]
   );
 
   const handleCreateElement = async () => {
@@ -204,12 +216,15 @@ const FloorPlanEditor: React.FC<FloorPlanEditorProps> = ({ project }) => {
   };
 
   const onNodeDoubleClick = useCallback((event: React.MouseEvent, node: Node) => {
+    // Не позволяем редактировать элементы, если активен слой плана или слой элементов заблокирован
+    if (activeLayer !== 'elements' || isElementsLocked) return;
+    
     const element = node.data.element as Element;
     setEditingElement(element);
     setElementId(element.element_id);
     setElementName(element.name);
     setElementDialogOpen(true);
-  }, []);
+  }, [activeLayer, isElementsLocked]);
 
   const handleUpdateElement = async () => {
     if (!editingElement || !elementId || !elementName) return;
@@ -228,6 +243,9 @@ const FloorPlanEditor: React.FC<FloorPlanEditorProps> = ({ project }) => {
   };
 
   const onNodesDelete = useCallback(async (deleted: Node[]) => {
+    // Не позволяем удалять элементы, если активен слой плана или слой элементов заблокирован
+    if (activeLayer !== 'elements' || isElementsLocked) return;
+    
     for (const node of deleted) {
       try {
         await deleteElement(parseInt(node.id));
@@ -235,11 +253,11 @@ const FloorPlanEditor: React.FC<FloorPlanEditorProps> = ({ project }) => {
         console.error('Error deleting element:', error);
       }
     }
-  }, []);
+  }, [activeLayer, isElementsLocked]);
 
   const onNodeDragStop = useCallback(async (_event: React.MouseEvent, node: Node) => {
-    // Не позволяем перетаскивать элементы, если слой плана заблокирован
-    if (isPlanLocked) return;
+    // Не позволяем перетаскивать элементы, если активен слой плана или слой элементов заблокирован
+    if (activeLayer !== 'elements' || isElementsLocked) return;
     
     const element = node.data.element as Element;
     if (element) {
@@ -252,7 +270,7 @@ const FloorPlanEditor: React.FC<FloorPlanEditorProps> = ({ project }) => {
         console.error('Error updating element position:', error);
       }
     }
-  }, [isPlanLocked]);
+  }, [activeLayer, isElementsLocked]);
 
   const handleSvgChange = useCallback(async (svg: string) => {
     setFloorPlanSvg(svg);
@@ -264,20 +282,47 @@ const FloorPlanEditor: React.FC<FloorPlanEditorProps> = ({ project }) => {
   }, [project.id]);
 
   const handleToggleLock = useCallback(async () => {
-    const newLockedState = !isPlanLocked;
-    setIsPlanLocked(newLockedState);
-    if (newLockedState) {
-      setIsDrawingMode(false);
+    // Блокируем только активный слой
+    if (activeLayer === 'plan') {
+      const newLockedState = !isPlanLocked;
+      setIsPlanLocked(newLockedState);
+      if (newLockedState) {
+        setSelectedTool(null);
+      }
+      try {
+        await updateProject(project.id, { floor_plan_locked: newLockedState });
+      } catch (error) {
+        console.error('Error updating plan lock state:', error);
+      }
+    } else {
+      const newLockedState = !isElementsLocked;
+      setIsElementsLocked(newLockedState);
+      if (newLockedState) {
+        setSelectedElementType(null);
+      }
+      try {
+        await updateProject(project.id, { elements_locked: newLockedState });
+      } catch (error) {
+        console.error('Error updating elements lock state:', error);
+      }
     }
+  }, [activeLayer, isPlanLocked, isElementsLocked, project.id]);
+
+  const handleLayerSwitch = useCallback(async () => {
+    const newLayer: 'plan' | 'elements' = activeLayer === 'plan' ? 'elements' : 'plan';
+    setActiveLayer(newLayer);
+    setSelectedElementType(null);
+    setSelectedTool(null);
+    
     try {
-      await updateProject(project.id, { floor_plan_locked: newLockedState });
+      await updateProject(project.id, { active_layer: newLayer });
     } catch (error) {
-      console.error('Error updating lock state:', error);
+      console.error('Error updating active layer:', error);
     }
-  }, [isPlanLocked, project.id]);
+  }, [activeLayer, project.id]);
 
   const handleClearPlan = useCallback(async () => {
-    if (isPlanLocked) return;
+    if (activeLayer !== 'plan' || isPlanLocked) return;
     const emptySvg = '<svg xmlns="http://www.w3.org/2000/svg"></svg>';
     setFloorPlanSvg(emptySvg);
     try {
@@ -285,11 +330,19 @@ const FloorPlanEditor: React.FC<FloorPlanEditorProps> = ({ project }) => {
     } catch (error) {
       console.error('Error clearing floor plan:', error);
     }
-  }, [isPlanLocked, project.id]);
+  }, [activeLayer, isPlanLocked, project.id]);
+
+  const isCurrentLayerLocked = activeLayer === 'plan' ? isPlanLocked : isElementsLocked;
 
   return (
     <Box sx={{ display: 'flex', height: '100%', gap: 2 }}>
-      <ElementPalette onElementSelect={setSelectedElementType} />
+      {!isDrawingMode && <ElementPalette onElementSelect={setSelectedElementType} />}
+      {isDrawingMode && (
+        <FloorPlanToolPalette
+          selectedTool={selectedTool}
+          onToolSelect={setSelectedTool}
+        />
+      )}
       
       <Box sx={{ flexGrow: 1, position: 'relative' }}>
         <Box
@@ -307,62 +360,69 @@ const FloorPlanEditor: React.FC<FloorPlanEditorProps> = ({ project }) => {
             boxShadow: 2,
           }}
         >
-          <Tooltip title={isDrawingMode ? 'Выйти из режима рисования' : 'Режим рисования плана'}>
+          <Tooltip title={isDrawingMode ? 'Переключить на слой элементов' : 'Переключить на слой плана'}>
             <ToggleButton
               value="draw"
               selected={isDrawingMode}
-              onChange={() => {
-                if (isPlanLocked) return;
-                setIsDrawingMode(!isDrawingMode);
-                setSelectedElementType(null);
-              }}
-              disabled={isPlanLocked}
+              onChange={handleLayerSwitch}
               size="small"
             >
               <EditIcon />
             </ToggleButton>
           </Tooltip>
-          <Tooltip title={isPlanLocked ? 'Разблокировать слой плана' : 'Заблокировать слой плана'}>
-            <IconButton onClick={handleToggleLock} size="small" color={isPlanLocked ? 'primary' : 'default'}>
-              {isPlanLocked ? <LockIcon /> : <LockOpenIcon />}
+          <Tooltip title={isCurrentLayerLocked 
+            ? `Разблокировать слой ${activeLayer === 'plan' ? 'плана' : 'элементов'}`
+            : `Заблокировать слой ${activeLayer === 'plan' ? 'плана' : 'элементов'}`}>
+            <IconButton onClick={handleToggleLock} size="small" color={isCurrentLayerLocked ? 'primary' : 'default'}>
+              {isCurrentLayerLocked ? <LockIcon /> : <LockOpenIcon />}
             </IconButton>
           </Tooltip>
-          <Tooltip title="Очистить план">
-            <IconButton 
-              onClick={handleClearPlan} 
-              size="small" 
-              disabled={isPlanLocked}
-              color="error"
-            >
-              <DeleteOutlineIcon />
-            </IconButton>
-          </Tooltip>
+          {activeLayer === 'plan' && (
+            <Tooltip title="Очистить план">
+              <IconButton 
+                onClick={handleClearPlan} 
+                size="small" 
+                disabled={isPlanLocked}
+                color="error"
+              >
+                <DeleteOutlineIcon />
+              </IconButton>
+            </Tooltip>
+          )}
         </Box>
         
         <ReactFlow
           nodes={nodes}
           edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onPaneClick={handlePaneClick}
-          onNodeDoubleClick={onNodeDoubleClick}
-          onNodesDelete={onNodesDelete}
-          onNodeDragStop={onNodeDragStop}
-          onEdgeDoubleClick={onEdgeDoubleClick}
+          onNodesChange={activeLayer === 'elements' ? onNodesChange : undefined}
+          onEdgesChange={activeLayer === 'elements' ? onEdgesChange : undefined}
+          onConnect={activeLayer === 'elements' ? onConnect : undefined}
+          onPaneClick={activeLayer === 'elements' ? handlePaneClick : undefined}
+          onNodeDoubleClick={activeLayer === 'elements' ? onNodeDoubleClick : undefined}
+          onNodesDelete={activeLayer === 'elements' ? onNodesDelete : undefined}
+          onNodeDragStop={activeLayer === 'elements' ? onNodeDragStop : undefined}
+          onEdgeDoubleClick={activeLayer === 'elements' ? onEdgeDoubleClick : undefined}
           nodeTypes={nodeTypes}
-          nodesDraggable={!isPlanLocked}
-          nodesConnectable={!isPlanLocked}
-          elementsSelectable={!isPlanLocked}
+          nodesDraggable={activeLayer === 'elements' && !isElementsLocked}
+          nodesConnectable={activeLayer === 'elements' && !isElementsLocked}
+          elementsSelectable={activeLayer === 'elements' && !isElementsLocked}
           fitView
+          style={{
+            pointerEvents: activeLayer === 'plan' ? 'none' : 'auto',
+          }}
+          panOnDrag={activeLayer === 'elements'}
+          zoomOnScroll={activeLayer === 'elements'}
+          zoomOnPinch={activeLayer === 'elements'}
+          preventScrolling={activeLayer === 'elements'}
         >
           <Controls />
           <Background />
           <MiniMap />
           <FloorPlanLayer
             svgData={floorPlanSvg}
-            isDrawing={isDrawingMode}
+            isDrawing={activeLayer === 'plan'}
             isLocked={isPlanLocked}
+            selectedTool={selectedTool}
             onSvgChange={handleSvgChange}
           />
         </ReactFlow>
